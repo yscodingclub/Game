@@ -1,97 +1,85 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-const GRID_SIZES = {
-  EASY: 5,
-  MEDIUM: 6,
-  HARD: 8,
-  EXTRA_HARD: 11,
+// 난이도 설정
+const DIFFICULTY = {
+  EASY: { size: 5, pairs: 5 },
+  MEDIUM: { size: 6, pairs: 7 },
+  HARD: { size: 8, pairs: 10 },
+  EXTRA_HARD: { size: 11, pairs: 15 },
 };
 
-const PAIR_COUNTS = {
-  EASY: 5,
-  MEDIUM: 7,
-  HARD: 10,
-  EXTRA_HARD: 15,
-};
+let difficulty = "EASY"; // 기본 난이도
+let stage = 1; // 기본 스테이지
+let gridSize = DIFFICULTY[difficulty].size;
+let pairCount = DIFFICULTY[difficulty].pairs;
 
-let difficulty = "EASY"; // Default difficulty
-let stageNumber = 1; // Default stage number
-let gridSize = GRID_SIZES[difficulty];
-let points = []; // Points to connect
-let lines = []; // Connected lines
+let points = [];
+let connections = [];
+let currentPath = [];
 let dragging = false;
-let currentLine = null;
-let startPoint = null;
 
+// 캔버스 크기
 canvas.width = 500;
 canvas.height = 500;
 
-// Initialize the game
+// 초기화
 function initGame() {
-  generateStage(difficulty, stageNumber);
+  gridSize = DIFFICULTY[difficulty].size;
+  pairCount = DIFFICULTY[difficulty].pairs;
+  generateStage();
   drawGame();
 }
 
-// Generate a random stage
-function generateStage(difficulty, stage) {
-  gridSize = GRID_SIZES[difficulty];
-  const pairCount = PAIR_COUNTS[difficulty];
-  points = generateValidPoints(gridSize, pairCount);
-  lines = []; // Clear existing lines
+// 스테이지 생성
+function generateStage() {
+  points = generateValidPoints();
+  connections = [];
+  currentPath = [];
 }
 
-// Generate points and ensure the stage is solvable
-function generateValidPoints(gridSize, pairCount) {
+// 점 생성 (해결 가능한 상태)
+function generateValidPoints() {
   const step = canvas.width / gridSize;
   const colors = ["red", "blue", "green", "yellow", "purple", "orange"];
-  const usedColors = [];
-  const generatedPoints = [];
+  const points = [];
 
   for (let i = 0; i < pairCount; i++) {
     const color = colors[i % colors.length];
-    usedColors.push(color);
-
     let point1, point2;
+
     do {
-      point1 = {
-        x: Math.floor(Math.random() * gridSize) * step + step / 2,
-        y: Math.floor(Math.random() * gridSize) * step + step / 2,
-        color,
-      };
-      point2 = {
-        x: Math.floor(Math.random() * gridSize) * step + step / 2,
-        y: Math.floor(Math.random() * gridSize) * step + step / 2,
-        color,
-      };
+      point1 = { x: randGrid(step), y: randGrid(step), color };
+      point2 = { x: randGrid(step), y: randGrid(step), color };
     } while (
-      isPointInList(point1, generatedPoints) ||
-      isPointInList(point2, generatedPoints) ||
+      isPointInList(point1, points) ||
+      isPointInList(point2, points) ||
       (point1.x === point2.x && point1.y === point2.y)
     );
 
-    generatedPoints.push(point1, point2);
+    points.push(point1, point2);
   }
 
-  return generatedPoints;
+  return points;
 }
 
-// Check if a point already exists in the list
+function randGrid(step) {
+  return Math.floor(Math.random() * gridSize) * step + step / 2;
+}
+
 function isPointInList(point, list) {
-  return list.some(
-    p => Math.hypot(p.x - point.x, p.y - point.y) < 15
-  );
+  return list.some(p => p.x === point.x && p.y === point.y);
 }
 
-// Draw the entire game
+// 게임 그리기
 function drawGame() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawGrid();
+  drawConnections();
   drawPoints();
-  drawLines();
 }
 
-// Draw grid
+// 격자 그리기
 function drawGrid() {
   const step = canvas.width / gridSize;
 
@@ -106,7 +94,7 @@ function drawGrid() {
   }
 }
 
-// Draw points
+// 점 그리기
 function drawPoints() {
   points.forEach(point => {
     ctx.beginPath();
@@ -116,97 +104,130 @@ function drawPoints() {
   });
 }
 
-// Draw lines
-function drawLines() {
-  lines.forEach(line => {
+// 연결된 선 및 효과 그리기
+function drawConnections() {
+  connections.forEach(connection => {
     ctx.beginPath();
-    ctx.moveTo(line.start.x, line.start.y);
-    ctx.lineTo(line.end.x, line.end.y);
-    ctx.strokeStyle = line.color;
+    ctx.moveTo(connection.start.x, connection.start.y);
+    ctx.lineTo(connection.end.x, connection.end.y);
+    ctx.strokeStyle = connection.color;
     ctx.lineWidth = 5;
     ctx.stroke();
+
+    // 연결 경로에 불투명한 원 효과 추가
+    const stepX = (connection.end.x - connection.start.x) / gridSize;
+    const stepY = (connection.end.y - connection.start.y) / gridSize;
+
+    for (let i = 1; i < gridSize; i++) {
+      ctx.beginPath();
+      ctx.arc(connection.start.x + stepX * i, connection.start.y + stepY * i, 10, 0, Math.PI * 2);
+      ctx.fillStyle = `${connection.color}88`; // 투명도 추가
+      ctx.fill();
+    }
   });
 }
 
-// Handle mouse down
-canvas.addEventListener("mousedown", (e) => {
-  const { offsetX, offsetY } = e;
-  startPoint = findPointAtPosition(offsetX, offsetY);
-
-  if (startPoint) {
-    dragging = true;
-    currentLine = { start: startPoint, end: null, color: startPoint.color };
-  }
-});
-
-// Handle mouse move
-canvas.addEventListener("mousemove", (e) => {
-  if (!dragging || !currentLine) return;
-
-  const { offsetX, offsetY } = e;
-  currentLine.end = { x: offsetX, y: offsetY, color: currentLine.color };
-  drawGame();
-
-  // Draw the temporary line
-  ctx.beginPath();
-  ctx.moveTo(currentLine.start.x, currentLine.start.y);
-  ctx.lineTo(currentLine.end.x, currentLine.end.y);
-  ctx.strokeStyle = currentLine.color;
-  ctx.lineWidth = 5;
-  ctx.stroke();
-});
-
-// Handle mouse up
-canvas.addEventListener("mouseup", (e) => {
-  if (!dragging || !currentLine) return;
-
-  const { offsetX, offsetY } = e;
-  const endPoint = findPointAtPosition(offsetX, offsetY);
-
-  if (endPoint && endPoint.color === currentLine.color && endPoint !== startPoint) {
-    // Valid connection
-    currentLine.end = endPoint;
-    lines.push(currentLine);
-
-    // Change grid color along the line
-    updateGridColors(currentLine);
-  }
-
-  dragging = false;
-  currentLine = null;
-  startPoint = null;
-  drawGame();
-});
-
-// Find a point near the given position
+// 점 클릭 여부 확인
 function findPointAtPosition(x, y) {
   return points.find(
-    p => Math.hypot(p.x - x, p.y - y) < 15
+    p => Math.hypot(p.x - x, p.y - y) < 10
   );
 }
 
-// Update the grid colors based on the line
-function updateGridColors(line) {
-  const step = canvas.width / gridSize;
+// 드래그 시작
+canvas.addEventListener("mousedown", e => {
+  const { offsetX, offsetY } = e;
+  const startPoint = findPointAtPosition(offsetX, offsetY);
 
-  const startX = Math.floor(line.start.x / step);
-  const startY = Math.floor(line.start.y / step);
-  const endX = Math.floor(line.end.x / step);
-  const endY = Math.floor(line.end.y / step);
-
-  const dx = Math.sign(endX - startX);
-  const dy = Math.sign(endY - startY);
-
-  let x = startX;
-  let y = startY;
-
-  while (x !== endX || y !== endY) {
-    ctx.fillStyle = line.color;
-    ctx.fillRect(x * step, y * step, step, step);
-    x += dx;
-    y += dy;
+  if (startPoint) {
+    dragging = true;
+    currentPath = [startPoint];
   }
+});
+
+// 드래그 중
+canvas.addEventListener("mousemove", e => {
+  if (!dragging || currentPath.length === 0) return;
+
+  const { offsetX, offsetY } = e;
+  const lastPoint = currentPath[currentPath.length - 1];
+  const nextPoint = findPointAtPosition(offsetX, offsetY);
+
+  if (
+    nextPoint &&
+    nextPoint.color === lastPoint.color &&
+    !currentPath.includes(nextPoint) &&
+    Math.abs(nextPoint.x - lastPoint.x) <= canvas.width / gridSize &&
+    Math.abs(nextPoint.y - lastPoint.y) <= canvas.height / gridSize
+  ) {
+    currentPath.push(nextPoint);
+    drawGame();
+    drawCurrentPath();
+  }
+});
+
+// 드래그 종료
+canvas.addEventListener("mouseup", () => {
+  if (!dragging || currentPath.length < 2) {
+    dragging = false;
+    currentPath = [];
+    return;
+  }
+
+  connections.push({
+    start: currentPath[0],
+    end: currentPath[currentPath.length - 1],
+    color: currentPath[0].color,
+  });
+
+  dragging = false;
+  currentPath = [];
+  drawGame();
+
+  if (checkStageComplete()) {
+    alert("Stage Complete! Moving to next stage.");
+    nextStage();
+  }
+});
+
+// 현재 드래그된 경로 그리기
+function drawCurrentPath() {
+  ctx.beginPath();
+  ctx.moveTo(currentPath[0].x, currentPath[0].y);
+
+  for (let i = 1; i < currentPath.length; i++) {
+    ctx.lineTo(currentPath[i].x, currentPath[i].y);
+  }
+
+  ctx.strokeStyle = currentPath[0].color;
+  ctx.lineWidth = 5;
+  ctx.stroke();
 }
 
-// Initialize the game
+// 스테이지 완료 여부 확인
+function checkStageComplete() {
+  return points.every(point =>
+    connections.some(
+      connection =>
+        (connection.start === point || connection.end === point) &&
+        connection.color === point.color
+    )
+  );
+}
+
+// 다음 스테이지
+function nextStage() {
+  stage++;
+  generateStage();
+  drawGame();
+}
+
+// 난이도 변경
+function changeDifficulty(newDifficulty) {
+  difficulty = newDifficulty;
+  stage = 1; // 스테이지 초기화
+  initGame();
+}
+
+// 초기화 실행
 initGame();
